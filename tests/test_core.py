@@ -179,3 +179,17 @@ def test_client_string_enum_parameters():
     )
     assert client.language_match == LanguageMatch.EXACT
     assert client.source_policy == SubtitleSourcePolicy.MANUAL_ONLY
+
+
+def test_client_sleep_defaults_do_not_add_delay():
+    client = YtSubs(languages="en")
+
+    assert client.sleep_interval_subtitles == 0
+    assert client.sleep_interval_requests == 1
+
+    assert (
+        YtSubs(languages="en", sleep_interval_subtitles=2).sleep_interval_subtitles == 2
+    )
+    assert (
+        YtSubs(languages="en", sleep_interval_subtitles=0).sleep_interval_subtitles == 0
+    )

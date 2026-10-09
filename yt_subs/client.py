@@ -122,7 +122,7 @@ class YtSubs:
         self, sleep_interval_subtitles: int | None
     ) -> int:
         if sleep_interval_subtitles is None:
-            return 2
+            return 0
         return sleep_interval_subtitles
 
     def _valid_sleep_interval_requests(
