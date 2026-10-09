@@ -89,7 +89,7 @@ def subtitle_download_opts(
     opts: dict[str, Any] = {
         "writesubtitles": True,
         "writeautomaticsub": True,
-        "subtitleslangs": resolved_langs,
+        "subtitleslangs": [*dict.fromkeys(resolved_langs)],
         "subtitlesformat": subtitle_format,
         "outtmpl": str(output_dir / f"{video_id}.%(ext)s"),
         "skip_download": skip_video,

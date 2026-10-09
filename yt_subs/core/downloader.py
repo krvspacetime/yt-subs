@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -183,6 +184,12 @@ def _error_subtitle_file(item: ResolvedSubtitle, error: str) -> SubtitleFile:
     )
 
 
+def _relabeled(file: SubtitleFile, item: ResolvedSubtitle) -> SubtitleFile:
+    if file.requested == item.requested and file.source == item.source:
+        return file
+    return replace(file, requested=item.requested, source=item.source)
+
+
 def _download_subtitles_direct(
     info: YtdlpSanitizedInfo,
     *,
@@ -195,19 +202,22 @@ def _download_subtitles_direct(
     """Fetch subtitle files over HTTP using URLs from pre-extracted metadata."""
     results: dict[LangCodeResolved, SubtitleFile] = {}
     fallback_items: list[ResolvedSubtitle] = []
+    handled: set[LangCodeResolved] = set()
 
     for index, item in enumerate(resolved_langs):
-        assert item.resolved is not None
+        resolved = item.resolved
+        assert resolved is not None
         assert item.source is not None
+        if resolved in handled:
+            continue
+        handled.add(resolved)
         if index > 0 and sleep_interval_subtitles > 0:
             time.sleep(sleep_interval_subtitles)
 
-        dest = expected_subtitle_path(
-            output_dir, video_id, item.resolved, subtitle_format
-        )
+        dest = expected_subtitle_path(output_dir, video_id, resolved, subtitle_format)
         track_url = find_track_url(
             info,
-            resolved=item.resolved,
+            resolved=resolved,
             source=item.source,
             subtitle_format=subtitle_format,
         )
@@ -216,7 +226,7 @@ def _download_subtitles_direct(
             log.warning(
                 "  no direct URL for '%s' (%s, %s)",
                 item.requested,
-                item.resolved,
+                resolved,
                 item.source,
             )
             fallback_items.append(item)
@@ -228,20 +238,18 @@ def _download_subtitles_direct(
                 log.warning(
                     "  empty response for '%s' (%s)",
                     item.requested,
-                    item.resolved,
+                    resolved,
                 )
                 fallback_items.append(item)
                 continue
 
             dest.write_bytes(payload)
-            results[item.resolved] = _subtitle_file_from_path(
-                item, dest, subtitle_format
-            )
+            results[resolved] = _subtitle_file_from_path(item, dest, subtitle_format)
         except SubtitleDownloadError as exc:
             log.warning(
                 "  rejected subtitle response for '%s' (%s): %s",
                 item.requested,
-                item.resolved,
+                resolved,
                 exc,
             )
             fallback_items.append(item)
@@ -249,7 +257,7 @@ def _download_subtitles_direct(
             log.warning(
                 "  direct fetch failed for '%s' (%s): %s",
                 item.requested,
-                item.resolved,
+                resolved,
                 exc,
             )
             fallback_items.append(item)
@@ -407,7 +415,7 @@ def download_subtitles(
                     )
 
         return tuple(
-            direct_results[item.resolved]
+            _relabeled(direct_results[item.resolved], item)
             for item in resolved_langs
             if item.resolved is not None
         )

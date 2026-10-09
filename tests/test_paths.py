@@ -152,6 +152,53 @@ def test_download_uses_sanitized_id_for_ytdlp_outtmpl(monkeypatch, tmp_path):
     assert captured["video_id"] == VideoId("_.._evil")
 
 
+def test_shared_resolved_track_is_reported_for_every_request(monkeypatch, tmp_path):
+    fetched = []
+
+    def fake_fetch(url, *, subtitle_format, timeout=30):
+        fetched.append(url)
+        return b"WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhi\n"
+
+    monkeypatch.setattr(downloader, "_fetch_subtitle_bytes", fake_fetch)
+
+    info = {
+        "id": "abc123",
+        "subtitles": {
+            "en-orig": [{"ext": "vtt", "url": "https://example.com/en-orig.vtt"}]
+        },
+    }
+
+    resolved_langs = (
+        ResolvedSubtitle(
+            requested=LangCodeRequested("en"),
+            resolved=LangCodeResolved("en-orig"),
+            source=SubtitleSource.MANUAL,
+        ),
+        ResolvedSubtitle(
+            requested=LangCodeRequested("en-orig"),
+            resolved=LangCodeResolved("en-orig"),
+            source=SubtitleSource.MANUAL,
+        ),
+    )
+
+    files = download_subtitles(
+        UrlStr("https://www.youtube.com/watch?v=x"),
+        resolved_langs=resolved_langs,
+        video_id=VideoId("abc123"),
+        output_dir=tmp_path,
+        subtitle_format=SubtitleFormat.VTT,
+        sleep_interval_subtitles=0,
+        sleep_interval_requests=0,
+        skip_video=True,
+        info=info,
+    )
+
+    assert [f.requested for f in files] == ["en", "en-orig"]
+    assert all(f.status == DownloadStatus.OK for f in files)
+    assert len({f.sub_path for f in files}) == 1
+    assert fetched == ["https://example.com/en-orig.vtt"]
+
+
 class _FakeResponse:
     def __init__(self, payload: bytes):
         self._payload = payload
