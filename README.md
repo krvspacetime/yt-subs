@@ -111,9 +111,8 @@ SubtitleSourcePolicy.AUTO_THEN_MANUAL
 
 `inspect()`, `resolve()`, and `download()` each fetch the video's metadata once.
 That fetch averages ~4 seconds and is about 98% of a download's wall time; the
-subtitle bytes themselves are ~0.3s. Calling more than one of them per video
-multiplies the only expensive thing you do — `inspect` + `resolve` + `download`
-on one video is roughly 12s, almost all of it the same three requests.
+subtitle bytes themselves are ~0.3s. Calling all three on one video costs
+roughly 12s, almost all of it the same metadata fetched three times.
 
 `download()` already resolves languages and reports every requested language,
 so most flows need a single call:
@@ -124,8 +123,25 @@ for subtitle in result.subtitles:
     print(subtitle.requested, subtitle.resolved, subtitle.status)
 ```
 
-Reserve `inspect()` and `resolve()` for when you only want metadata — a language
-picker, or deciding whether to download at all.
+When you do need the intermediate stages, reuse the metadata with `info=`.
+`extract_info()` is exported for exactly this:
+
+```python
+from yt_subs import extract_info
+
+info = extract_info(url)                                # one request per video
+availability = client.inspect(url, info=info)
+resolved = client.resolve(url, languages=["en", "de"], info=info)
+result = client.download(url, languages=["en", "de"], info=info)
+```
+
+Measured on the same video: the shared pipeline is one extraction (~4s) plus
+~0.6s of work, versus ~12s for three independent calls.
+
+`info` must be a dict returned by `extract_info()`. Hand-built dicts are
+rejected — yt-dlp needs the full record (`id`, `extractor`, and the subtitle
+tracks) to download anything, so a trimmed dict would fail much later. Playlist
+results are rejected too; `yt-subs` downloads single videos only.
 
 ## Bulk Downloads
 

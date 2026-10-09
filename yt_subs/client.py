@@ -8,7 +8,6 @@ from yt_subs.error import (
     YtSubsError,
     YtSubsValueError,
 )
-
 from yt_subs.core.resolver import resolve_subtitles, resolve_availability
 from yt_subs.core.ytdlp_opts import normalize_cookies
 from yt_subs.core import (
@@ -31,6 +30,7 @@ from yt_subs.shared.models import (
     VideoId,
     SubtitleFormat,
     BrowserCookies,
+    YtdlpSanitizedInfo,
 )
 
 
@@ -183,8 +183,41 @@ class YtSubs:
             return self.languages
         return parse_languages(languages)
 
-    def inspect(self, url: str) -> SubtitleAvailability:
-        info = extract_info(UrlStr(url))
+    def _valid_info(self, info: YtdlpSanitizedInfo | None) -> YtdlpSanitizedInfo | None:
+        if info is None:
+            return None
+
+        if not isinstance(info, dict):
+            raise YtSubsValueError(
+                "info must be a dict of the shape returned by extract_info()"
+            )
+        if not isinstance(info.get("id"), str) or not info["id"]:
+            raise YtSubsValueError(
+                "info is missing a usable 'id'; pass a dict from extract_info()"
+            )
+        if not info.get("extractor"):
+            raise YtSubsValueError(
+                "info is missing the 'extractor' key that yt-dlp records; pass a "
+                "dict from extract_info() rather than a hand-built one"
+            )
+        if info.get("_type") in ("playlist", "url_transparent"):
+            raise YtSubsValueError(
+                f"info is a {info['_type']!r} result; yt-subs downloads single "
+                "videos only"
+            )
+        return info
+
+    def _extract_or_reuse(
+        self, url: str, info: YtdlpSanitizedInfo | None
+    ) -> YtdlpSanitizedInfo:
+        if info is not None:
+            return info
+        return extract_info(UrlStr(url))
+
+    def inspect(
+        self, url: str, *, info: YtdlpSanitizedInfo | None = None
+    ) -> SubtitleAvailability:
+        info = self._extract_or_reuse(url, self._valid_info(info))
         return inspect_subtitle_availability(UrlStr(url), info)
 
     def resolve(
@@ -194,9 +227,10 @@ class YtSubs:
         languages: LanguagesInput | None = None,
         language_match: LanguageMatch | str | None = None,
         source_policy: SubtitleSourcePolicy | str | None = None,
+        info: YtdlpSanitizedInfo | None = None,
     ) -> tuple[ResolvedSubtitle, ...]:
         _langs = self._resolve_languages(languages)
-        availability = self.inspect(url)
+        availability = self.inspect(url, info=info)
         return resolve_availability(
             availability,
             languages=_langs,
@@ -225,6 +259,7 @@ class YtSubs:
         language_match: LanguageMatch | str | None = None,
         source_policy: SubtitleSourcePolicy | str | None = None,
         cookies: str | None = None,
+        info: YtdlpSanitizedInfo | None = None,
     ) -> SubtitleResult:
         _languages = self._resolve_languages(languages)
         _output_dir = (
@@ -264,11 +299,11 @@ class YtSubs:
         )
         _cookies = self.cookies if cookies is None else self._valid_cookies(cookies)
 
-        info = extract_info(UrlStr(url))
-        video_id: VideoId = info.get("id", "unknown")
-        title = str(info.get("title", ""))
+        _info = self._extract_or_reuse(url, self._valid_info(info))
+        video_id: VideoId = _info.get("id", "unknown")
+        title = str(_info.get("title", ""))
 
-        manual, auto = inspect_subtitles(info)
+        manual, auto = inspect_subtitles(_info)
 
         resolved = resolve_subtitles(
             _languages,
@@ -287,7 +322,7 @@ class YtSubs:
             sleep_interval_requests=_sleep_interval_requests,
             subtitle_format=_subtitle_format,
             skip_video=_skip_video,
-            info=info,
+            info=_info,
             cookies=_cookies,
         )
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 MOCK_VIDEO_INFO_OK = {
+    "_type": "video",
     "id": "abc123",
+    "extractor": "youtube",
     "title": "Mock Video Title",
     "subtitles": {
         "en": [
