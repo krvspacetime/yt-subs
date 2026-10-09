@@ -21,6 +21,7 @@ from yt_subs.shared.models import (
     SubtitleSource,
     VideoId,
     YtdlpSanitizedInfo,
+    BrowserCookies,
 )
 
 log = logging.getLogger(__name__)
@@ -195,6 +196,7 @@ def _download_subtitles_ytdlp(
     sleep_interval_subtitles: int,
     sleep_interval_requests: int,
     skip_video: bool,
+    cookies: BrowserCookies | None = None,
 ) -> str | None:
     """Download subtitles via yt-dlp. Reuses pre-extracted info when provided."""
     opts = subtitle_download_opts(
@@ -206,6 +208,7 @@ def _download_subtitles_ytdlp(
         skip_video=skip_video,
         sleep_interval_subtitles=sleep_interval_subtitles,
         sleep_interval_requests=sleep_interval_requests,
+        cookies=cookies,
     )
 
     try:
@@ -265,6 +268,7 @@ def download_subtitles(
     sleep_interval_requests: int,
     skip_video: bool,
     info: YtdlpSanitizedInfo | None = None,
+    cookies: BrowserCookies | None = None,
 ) -> tuple[SubtitleFile, ...]:
     if not resolved_langs:
         return ()
@@ -305,6 +309,7 @@ def download_subtitles(
                 sleep_interval_subtitles=sleep_interval_subtitles,
                 sleep_interval_requests=sleep_interval_requests,
                 skip_video=True,
+                cookies=cookies,
             )
 
             for item in fallback_items:
@@ -340,6 +345,7 @@ def download_subtitles(
         sleep_interval_subtitles=sleep_interval_subtitles,
         sleep_interval_requests=sleep_interval_requests,
         skip_video=skip_video,
+        cookies=cookies,
     )
     return _collect_results_after_ytdlp(
         resolved_langs,

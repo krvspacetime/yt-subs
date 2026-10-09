@@ -5,6 +5,7 @@ from pathlib import Path
 from yt_subs.error import ExtractorError, LanguageParseError
 
 from yt_subs.core.resolver import resolve_subtitles, resolve_availability
+from yt_subs.core.ytdlp_opts import normalize_cookies
 from yt_subs.core import (
     extract_info,
     inspect_subtitle_availability,
@@ -24,6 +25,7 @@ from yt_subs.shared.models import (
     UrlStr,
     VideoId,
     SubtitleFormat,
+    BrowserCookies,
 )
 
 
@@ -38,6 +40,7 @@ class YtSubs:
         "language_match",
         "source_policy",
         "max_workers",
+        "cookies",
     )
 
     def __init__(
@@ -52,6 +55,7 @@ class YtSubs:
         language_match: LanguageMatch | str | None = None,
         source_policy: SubtitleSourcePolicy | str | None = None,
         max_workers: int | None = None,
+        cookies: str | None = None,
     ):
         self.languages = parse_languages(languages) if languages is not None else None
         self.output_dir = self._valid_output_dir(output_dir)
@@ -66,6 +70,19 @@ class YtSubs:
         self.language_match = self._valid_language_match(language_match)
         self.source_policy = self._valid_source_policy(source_policy)
         self.max_workers = self._valid_max_workers(max_workers)
+        self.cookies = self._valid_cookies(cookies)
+
+    def _valid_cookies(self, cookies: str | None) -> BrowserCookies | None:
+        """
+        Browser cookies to send to YouTube when yt-dlp does the download.
+
+        Off by default: reading a browser's cookie store means sending that
+        user's logged-in session (and whatever else the browser will hand
+        over) to the remote site, so it must be opt-in. Accepts yt-dlp's
+        browser spec syntax, e.g. "chrome", "firefox:myprofile",
+        "chromium+gnomekeyring", "firefox::Container 1".
+        """
+        return normalize_cookies(cookies)
 
     def _valid_output_dir(self, output_dir: Path | str | None) -> Path:
         if output_dir is None:
@@ -181,6 +198,7 @@ class YtSubs:
         sleep_interval_requests: int | None = None,
         language_match: LanguageMatch | str | None = None,
         source_policy: SubtitleSourcePolicy | str | None = None,
+        cookies: str | None = None,
     ) -> SubtitleResult:
         _languages = self._resolve_languages(languages)
         _output_dir = (
@@ -218,6 +236,7 @@ class YtSubs:
             if source_policy is None
             else self._valid_source_policy(source_policy)
         )
+        _cookies = self.cookies if cookies is None else self._valid_cookies(cookies)
 
         info = extract_info(UrlStr(url))
         video_id: VideoId = info.get("id", "unknown")
@@ -243,6 +262,7 @@ class YtSubs:
             subtitle_format=_subtitle_format,
             skip_video=_skip_video,
             info=info,
+            cookies=_cookies,
         )
 
         by_requested = {item.requested: item for item in downloaded}

@@ -12,6 +12,8 @@ UrlStr = NewType("UrlStr", str)
 VideoId = NewType("VideoId", str)
 LangCode = NewType("LangCode", str)
 
+type BrowserCookies = tuple[str, str | None, str | None, str | None]
+
 # Requested language code — what the caller asks for, e.g. "en", "zh"
 LangCodeRequested = NewType("LangCodeRequested", str)
 
@@ -162,6 +164,7 @@ class DownloadOverrides(TypedDict, total=False):
     sleep_interval_requests: int | None
     language_match: LanguageMatch | None
     source_policy: SubtitleSourcePolicy | None
+    cookies: str | None
 
 
 class LanguageMatch(StrEnum):
