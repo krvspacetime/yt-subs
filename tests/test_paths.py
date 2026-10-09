@@ -199,6 +199,31 @@ def test_shared_resolved_track_is_reported_for_every_request(monkeypatch, tmp_pa
     assert fetched == ["https://example.com/en-orig.vtt"]
 
 
+def test_download_rejects_unresolved_items(tmp_path):
+    unresolved = ResolvedSubtitle(
+        requested=LangCodeRequested("de"),
+        resolved=None,
+        source=None,
+    )
+
+    with pytest.raises(SubtitleDownloadError):
+        download_subtitles(
+            UrlStr("https://www.youtube.com/watch?v=x"),
+            resolved_langs=(unresolved,),
+            video_id=VideoId("abc123"),
+            output_dir=tmp_path,
+            subtitle_format=SubtitleFormat.VTT,
+            sleep_interval_subtitles=0,
+            sleep_interval_requests=0,
+            skip_video=True,
+            info={"id": "abc123"},
+        )
+
+
+def test_public_module_still_exports_download_subtitles():
+    assert downloader.download_subtitles is download_subtitles
+
+
 class _FakeResponse:
     def __init__(self, payload: bytes):
         self._payload = payload

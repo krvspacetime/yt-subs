@@ -184,6 +184,23 @@ def _error_subtitle_file(item: ResolvedSubtitle, error: str) -> SubtitleFile:
     )
 
 
+def _require_resolved(item: ResolvedSubtitle) -> LangCodeResolved:
+    if item.resolved is None:
+        raise SubtitleDownloadError(
+            f"cannot download unresolved subtitle track: requested={item.requested!r}"
+        )
+    return item.resolved
+
+
+def _require_source(item: ResolvedSubtitle) -> SubtitleSource:
+    if item.source is None:
+        raise SubtitleDownloadError(
+            "cannot download subtitle track without a source: "
+            f"requested={item.requested!r}"
+        )
+    return item.source
+
+
 def _relabeled(file: SubtitleFile, item: ResolvedSubtitle) -> SubtitleFile:
     if file.requested == item.requested and file.source == item.source:
         return file
@@ -205,9 +222,8 @@ def _download_subtitles_direct(
     handled: set[LangCodeResolved] = set()
 
     for index, item in enumerate(resolved_langs):
-        resolved = item.resolved
-        assert resolved is not None
-        assert item.source is not None
+        resolved = _require_resolved(item)
+        source = _require_source(item)
         if resolved in handled:
             continue
         handled.add(resolved)
@@ -218,7 +234,7 @@ def _download_subtitles_direct(
         track_url = find_track_url(
             info,
             resolved=resolved,
-            source=item.source,
+            source=source,
             subtitle_format=subtitle_format,
         )
 
@@ -227,7 +243,7 @@ def _download_subtitles_direct(
                 "  no direct URL for '%s' (%s, %s)",
                 item.requested,
                 resolved,
-                item.source,
+                source,
             )
             fallback_items.append(item)
             continue
@@ -315,19 +331,17 @@ def _collect_results_after_ytdlp(
 ) -> tuple[SubtitleFile, ...]:
     files: list[SubtitleFile] = []
     for item in resolved_langs:
-        assert item.resolved is not None
+        resolved = _require_resolved(item)
         if error is not None:
             files.append(_error_subtitle_file(item, error))
             continue
 
-        sub_path = find_subtitle_file(
-            output_dir, video_id, item.resolved, subtitle_format
-        )
+        sub_path = find_subtitle_file(output_dir, video_id, resolved, subtitle_format)
         if sub_path is None:
             log.warning(
                 "  '%s' (%s) — .%s not found after download",
                 item.requested,
-                item.resolved,
+                resolved,
                 subtitle_format,
             )
             files.append(_missing_subtitle_file(item))
@@ -397,27 +411,24 @@ def download_subtitles(
             )
 
             for item in fallback_items:
-                assert item.resolved is not None
+                resolved = _require_resolved(item)
                 if ytdlp_error is not None:
-                    direct_results[item.resolved] = _error_subtitle_file(
-                        item, ytdlp_error
-                    )
+                    direct_results[resolved] = _error_subtitle_file(item, ytdlp_error)
                     continue
 
                 sub_path = find_subtitle_file(
-                    output_dir, safe_video_id, item.resolved, subtitle_format
+                    output_dir, safe_video_id, resolved, subtitle_format
                 )
                 if sub_path is None:
-                    direct_results[item.resolved] = _missing_subtitle_file(item)
+                    direct_results[resolved] = _missing_subtitle_file(item)
                 else:
-                    direct_results[item.resolved] = _subtitle_file_from_path(
+                    direct_results[resolved] = _subtitle_file_from_path(
                         item, sub_path, subtitle_format
                     )
 
         return tuple(
-            _relabeled(direct_results[item.resolved], item)
+            _relabeled(direct_results[_require_resolved(item)], item)
             for item in resolved_langs
-            if item.resolved is not None
         )
 
     ytdlp_error = _download_subtitles_ytdlp(
