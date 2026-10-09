@@ -158,7 +158,7 @@ class SubtitleResult:
 class DownloadOverrides(TypedDict, total=False):
     languages: LanguagesInput | None
     output_dir: Path | str | None
-    subtitle_format: SubtitleFormat | None
+    subtitle_format: SubtitleFormat | str | None
     skip_video: bool | None
     sleep_interval_subtitles: int | None
     sleep_interval_requests: int | None

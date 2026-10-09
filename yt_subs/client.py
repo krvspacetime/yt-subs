@@ -2,7 +2,12 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import Iterable, Iterator, Unpack
 from pathlib import Path
 
-from yt_subs.error import ExtractorError, LanguageParseError
+from yt_subs.error import (
+    ExtractorError,
+    LanguageParseError,
+    YtSubsError,
+    YtSubsValueError,
+)
 
 from yt_subs.core.resolver import resolve_subtitles, resolve_availability
 from yt_subs.core.ytdlp_opts import normalize_cookies
@@ -98,7 +103,14 @@ class YtSubs:
             return SubtitleFormat.VTT
 
         if not isinstance(subtitle_format, SubtitleFormat):
-            return SubtitleFormat(subtitle_format)
+            try:
+                return SubtitleFormat(subtitle_format)
+            except ValueError as exc:
+                raise YtSubsValueError(
+                    f"unsupported subtitle_format: {subtitle_format!r}. "
+                    f"Supported formats are: "
+                    f"{', '.join(f.value for f in SubtitleFormat)}."
+                ) from exc
         return subtitle_format
 
     def _valid_skip_video(self, skip_video: bool | None) -> bool:
@@ -126,7 +138,14 @@ class YtSubs:
         if language_match is None:
             return LanguageMatch.REGIONAL
         if isinstance(language_match, str):
-            return LanguageMatch(language_match)
+            try:
+                return LanguageMatch(language_match)
+            except ValueError as exc:
+                raise YtSubsValueError(
+                    f"unsupported language_match: {language_match!r}. "
+                    f"Supported values are: "
+                    f"{', '.join(f.value for f in LanguageMatch)}."
+                ) from exc
         return language_match
 
     def _valid_source_policy(
@@ -135,7 +154,14 @@ class YtSubs:
         if source_policy is None:
             return SubtitleSourcePolicy.MANUAL_THEN_AUTO
         if isinstance(source_policy, str):
-            return SubtitleSourcePolicy(source_policy)
+            try:
+                return SubtitleSourcePolicy(source_policy)
+            except ValueError as exc:
+                raise YtSubsValueError(
+                    f"unsupported source_policy: {source_policy!r}. "
+                    f"Supported values are: "
+                    f"{', '.join(f.value for f in SubtitleSourcePolicy)}."
+                ) from exc
         return source_policy
 
     def _valid_max_workers(self, max_workers: int | None) -> int:
@@ -192,7 +218,7 @@ class YtSubs:
         *,
         languages: LanguagesInput | None = None,
         output_dir: Path | str | None = None,
-        subtitle_format: SubtitleFormat | None = None,
+        subtitle_format: SubtitleFormat | str | None = None,
         skip_video: bool | None = None,
         sleep_interval_subtitles: int | None = None,
         sleep_interval_requests: int | None = None,
@@ -305,28 +331,34 @@ class YtSubs:
             else self._valid_max_workers(max_workers)
         )
 
+        def failed_result(url: str, exc: BaseException) -> SubtitleResult:
+            try:
+                resolved_langs = self._resolve_languages(overrides.get("languages"))
+            except LanguageParseError:
+                resolved_langs = ()
+            subtitles = [
+                SubtitleFile(
+                    requested=spec.requested,
+                    resolved=None,
+                    source=None,
+                    status=DownloadStatus.ERROR,
+                    error=str(exc),
+                )
+                for spec in resolved_langs
+            ]
+            return SubtitleResult(
+                url=UrlStr(url),
+                video_id=VideoId("unknown"),
+                title="unknown",
+                subtitles=tuple(subtitles),
+            )
+
         if workers == 1:
             for url in urls:
                 try:
                     yield self.download(url, **overrides)
-                except ExtractorError as exc:
-                    resolved_langs = self._resolve_languages(overrides.get("languages"))
-                    subtitles = [
-                        SubtitleFile(
-                            requested=spec.requested,
-                            resolved=None,
-                            source=None,
-                            status=DownloadStatus.ERROR,
-                            error=str(exc),
-                        )
-                        for spec in resolved_langs
-                    ]
-                    yield SubtitleResult(
-                        url=UrlStr(url),
-                        video_id=VideoId("unknown"),
-                        title="unknown",
-                        subtitles=tuple(subtitles),
-                    )
+                except (ExtractorError, YtSubsError, OSError) as exc:
+                    yield failed_result(url, exc)
             return
 
         url_iter = iter(urls)
@@ -349,26 +381,8 @@ class YtSubs:
                     url = future_to_url.pop(future)
                     try:
                         yield future.result()
-                    except ExtractorError as exc:
-                        resolved_langs = self._resolve_languages(
-                            overrides.get("languages")
-                        )
-                        subtitles = [
-                            SubtitleFile(
-                                requested=spec.requested,
-                                resolved=None,
-                                source=None,
-                                status=DownloadStatus.ERROR,
-                                error=str(exc),
-                            )
-                            for spec in resolved_langs
-                        ]
-                        yield SubtitleResult(
-                            url=UrlStr(url),
-                            video_id=VideoId("unknown"),
-                            title="unknown",
-                            subtitles=tuple(subtitles),
-                        )
+                    except (ExtractorError, YtSubsError, OSError) as exc:
+                        yield failed_result(url, exc)
 
                     try:
                         next_url = next(url_iter)

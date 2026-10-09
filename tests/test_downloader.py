@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from yt_subs import YtSubs
@@ -9,7 +10,7 @@ from yt_subs.shared.models import (
     LangCodeResolved,
     SubtitleSource,
 )
-from yt_subs.error import VideoUnavailableError
+from yt_subs.error import VideoUnavailableError, YtSubsValueError
 from tests.fixtures import (
     MOCK_VIDEO_INFO_OK,
     MOCK_VTT_CONTENT,
@@ -25,6 +26,80 @@ def test_client_inspect(monkeypatch):
     assert availability.video_id == "abc123"
     assert "en" in availability.manual
     assert "de" in availability.auto
+
+
+def test_invalid_format_override_raises_yt_subs_error():
+    client = YtSubs(languages="en")
+
+    with pytest.raises(YtSubsValueError):
+        client.download(
+            "https://www.youtube.com/watch?v=abc123", subtitle_format="vvtt"
+        )
+
+    with pytest.raises(YtSubsValueError):
+        YtSubs(languages="en", language_match="exactly")
+
+
+def test_download_many_survives_bad_format_override():
+    client = YtSubs(languages="en")
+    urls = [
+        "https://www.youtube.com/watch?v=one",
+        "https://www.youtube.com/watch?v=two",
+    ]
+
+    results = list(client.download_many(urls, subtitle_format="vvtt"))
+
+    assert len(results) == 2
+    for result in results:
+        assert result.subtitles[0].status == DownloadStatus.ERROR
+        assert result.subtitles[0].error is not None
+
+
+def test_download_many_survives_bad_languages_override(monkeypatch):
+    monkeypatch.setattr("yt_subs.client.extract_info", lambda url: MOCK_VIDEO_INFO_OK)
+
+    def mock_download_subtitles(*args, **kwargs):
+        return (
+            SubtitleFile(
+                requested=LangCodeRequested("en"),
+                resolved=LangCodeResolved("en"),
+                source=SubtitleSource.MANUAL,
+                status=DownloadStatus.OK,
+                sub_path=Path("dummy_path.vtt"),
+                format=SubtitleFormat.VTT,
+            ),
+        )
+
+    monkeypatch.setattr("yt_subs.client.download_subtitles", mock_download_subtitles)
+
+    client = YtSubs()
+    results = list(
+        client.download_many(
+            ["https://www.youtube.com/watch?v=one"], languages={"en": ["es-ES"]}
+        )
+    )
+
+    assert len(results) == 1
+    assert results[0].subtitles == ()
+    assert results[0].video_id == "unknown"
+
+
+def test_download_many_survives_filesystem_errors(monkeypatch):
+    monkeypatch.setattr("yt_subs.client.extract_info", lambda url: MOCK_VIDEO_INFO_OK)
+
+    def mock_download_subtitles(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("yt_subs.client.download_subtitles", mock_download_subtitles)
+
+    client = YtSubs(languages="en")
+    results = list(client.download_many(["https://www.youtube.com/watch?v=one"]))
+
+    assert len(results) == 1
+    assert results[0].subtitles[0].status == DownloadStatus.ERROR
+    error = results[0].subtitles[0].error
+    assert error is not None
+    assert "disk full" in error
 
 
 def test_client_resolve(monkeypatch):
