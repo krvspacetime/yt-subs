@@ -107,6 +107,26 @@ SubtitleSourcePolicy.MANUAL_THEN_AUTO
 SubtitleSourcePolicy.AUTO_THEN_MANUAL
 ```
 
+## One metadata fetch per call
+
+`inspect()`, `resolve()`, and `download()` each fetch the video's metadata once.
+That fetch averages ~4 seconds and is about 98% of a download's wall time; the
+subtitle bytes themselves are ~0.3s. Calling more than one of them per video
+multiplies the only expensive thing you do — `inspect` + `resolve` + `download`
+on one video is roughly 12s, almost all of it the same three requests.
+
+`download()` already resolves languages and reports every requested language,
+so most flows need a single call:
+
+```python
+result = client.download(url)
+for subtitle in result.subtitles:
+    print(subtitle.requested, subtitle.resolved, subtitle.status)
+```
+
+Reserve `inspect()` and `resolve()` for when you only want metadata — a language
+picker, or deciding whether to download at all.
+
 ## Bulk Downloads
 
 `download_many()` returns `Iterator[SubtitleResult]` so it's recommended for bulk downloads. It is implemented using `ThreadPoolExecutor` so the `max_workers` can be set (defaults to 1).
