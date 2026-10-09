@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 import yt_dlp
@@ -29,6 +30,8 @@ from yt_subs.error import SubtitleDownloadError
 log = logging.getLogger(__name__)
 
 _FETCH_USER_AGENT = "Mozilla/5.0 (compatible; yt-subs/0.1)"
+
+_MAX_SUBTITLE_BYTES = 5 * 1024 * 1024
 
 _UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_.\-]")
 _WINDOWS_RESERVED_NAMES = frozenset(
@@ -101,10 +104,49 @@ def find_track_url(
     return None
 
 
-def _fetch_subtitle_bytes(url: str, *, timeout: int = 30) -> bytes:
+def _strip_bom(payload: bytes) -> bytes:
+    return payload[3:] if payload.startswith(b"\xef\xbb\xbf") else payload
+
+
+def _looks_like_subtitle(payload: bytes, subtitle_format: SubtitleFormat) -> bool:
+    head = _strip_bom(payload).lstrip()[:32]
+    match subtitle_format:
+        case SubtitleFormat.VTT:
+            return head.startswith(b"WEBVTT")
+        case SubtitleFormat.JSON3:
+            return head.startswith(b"{")
+        case SubtitleFormat.SRV1 | SubtitleFormat.SRV2 | SubtitleFormat.SRV3:
+            return head.startswith(b"<?xml")
+        case SubtitleFormat.TTML:
+            return head.startswith(b"<?xml") or head.startswith(b"<tt")
+        case SubtitleFormat.SRT:
+            return re.match(rb"\d{1,6}\s", head) is not None
+    return True
+
+
+def _fetch_subtitle_bytes(
+    url: str,
+    *,
+    subtitle_format: SubtitleFormat,
+    timeout: int = 30,
+    max_bytes: int = _MAX_SUBTITLE_BYTES,
+) -> bytes:
+    if urlsplit(url).scheme not in ("http", "https"):
+        raise SubtitleDownloadError(f"refusing to fetch non-http subtitle url: {url!r}")
+
     request = Request(url, headers={"User-Agent": _FETCH_USER_AGENT})
     with urlopen(request, timeout=timeout) as response:
-        return response.read()
+        payload = response.read(max_bytes + 1)
+
+    if len(payload) > max_bytes:
+        raise SubtitleDownloadError(
+            f"subtitle response too large: over {max_bytes} bytes"
+        )
+    if payload.strip() and not _looks_like_subtitle(payload, subtitle_format):
+        raise SubtitleDownloadError(
+            f"subtitle response does not look like {subtitle_format}"
+        )
+    return payload
 
 
 def _subtitle_file_from_path(
@@ -181,7 +223,7 @@ def _download_subtitles_direct(
             continue
 
         try:
-            payload = _fetch_subtitle_bytes(track_url)
+            payload = _fetch_subtitle_bytes(track_url, subtitle_format=subtitle_format)
             if not payload.strip():
                 log.warning(
                     "  empty response for '%s' (%s)",
@@ -195,6 +237,14 @@ def _download_subtitles_direct(
             results[item.resolved] = _subtitle_file_from_path(
                 item, dest, subtitle_format
             )
+        except SubtitleDownloadError as exc:
+            log.warning(
+                "  rejected subtitle response for '%s' (%s): %s",
+                item.requested,
+                item.resolved,
+                exc,
+            )
+            fallback_items.append(item)
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             log.warning(
                 "  direct fetch failed for '%s' (%s): %s",

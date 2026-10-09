@@ -1,5 +1,6 @@
 import pytest
 
+from yt_subs.core import downloader
 from yt_subs.core.downloader import (
     download_subtitles,
     expected_subtitle_path,
@@ -149,3 +150,124 @@ def test_download_uses_sanitized_id_for_ytdlp_outtmpl(monkeypatch, tmp_path):
     )
 
     assert captured["video_id"] == VideoId("_.._evil")
+
+
+class _FakeResponse:
+    def __init__(self, payload: bytes):
+        self._payload = payload
+        self.headers = {"Content-Type": "text/vtt; charset=utf-8"}
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            return self._payload
+        return self._payload[:size]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+def _patch_fetch(monkeypatch, payload: bytes):
+    monkeypatch.setattr(
+        downloader,
+        "urlopen",
+        lambda request, timeout=None: _FakeResponse(payload),
+    )
+
+
+def _fetch(url: str, subtitle_format: SubtitleFormat) -> bytes:
+    return downloader._fetch_subtitle_bytes(url, subtitle_format=subtitle_format)
+
+
+def test_fetch_rejects_non_http_urls():
+    with pytest.raises(SubtitleDownloadError):
+        _fetch("file:///etc/passwd", SubtitleFormat.VTT)
+
+    with pytest.raises(SubtitleDownloadError):
+        _fetch("ftp://example.com/en.vtt", SubtitleFormat.VTT)
+
+
+def test_fetch_rejects_oversized_response(monkeypatch):
+    _patch_fetch(monkeypatch, b"WEBVTT" + b"x" * downloader._MAX_SUBTITLE_BYTES)
+
+    with pytest.raises(SubtitleDownloadError):
+        _fetch("https://example.com/en.vtt", SubtitleFormat.VTT)
+
+
+def test_fetch_rejects_html_error_page(monkeypatch):
+    _patch_fetch(monkeypatch, b"<!DOCTYPE html><html><body>denied</body></html>")
+
+    with pytest.raises(SubtitleDownloadError):
+        _fetch("https://example.com/en.vtt", SubtitleFormat.VTT)
+
+
+ACCEPTED = [
+    (b"WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhi\n", SubtitleFormat.VTT),
+    (b"\xef\xbb\xbfWEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhi\n", SubtitleFormat.VTT),
+    (b"1\n00:00:01,000 --> 00:00:03,000\nhi\n", SubtitleFormat.SRT),
+    (b'{"events": []}', SubtitleFormat.JSON3),
+    (b"<?xml version='1.0'?><timedtext/>", SubtitleFormat.SRV3),
+    (b"<?xml version='1.0'?><tt/>", SubtitleFormat.TTML),
+    (b"<tt/>", SubtitleFormat.TTML),
+]
+
+REJECTED = [
+    (b"WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhi\n", SubtitleFormat.SRT),
+    (b"1\n00:00:01,000 --> 00:00:03,000\nhi\n", SubtitleFormat.VTT),
+    (b"<!DOCTYPE html><html><body>denied</body></html>", SubtitleFormat.VTT),
+    (b"garbage", SubtitleFormat.VTT),
+]
+
+
+def test_fetch_allows_empty_payload_for_caller_to_handle(monkeypatch):
+    _patch_fetch(monkeypatch, b"")
+    assert _fetch("https://example.com/en.vtt", SubtitleFormat.VTT) == b""
+
+
+@pytest.mark.parametrize(("payload", "subtitle_format"), ACCEPTED)
+def test_fetch_accepts_matching_format(monkeypatch, payload, subtitle_format):
+    _patch_fetch(monkeypatch, payload)
+    assert _fetch("https://example.com/en", subtitle_format) == payload
+
+
+@pytest.mark.parametrize(("payload", "subtitle_format"), REJECTED)
+def test_fetch_rejects_mismatched_format(monkeypatch, payload, subtitle_format):
+    _patch_fetch(monkeypatch, payload)
+    with pytest.raises(SubtitleDownloadError):
+        _fetch("https://example.com/en", subtitle_format)
+
+
+def test_direct_download_falls_back_when_response_rejected(monkeypatch, tmp_path):
+    fallback_calls = []
+
+    def fake_ytdlp(*args, **kwargs):
+        fallback_calls.append(kwargs)
+        expected_subtitle_path(
+            tmp_path, kwargs["video_id"], LANG, SubtitleFormat.VTT
+        ).write_bytes(b"WEBVTT")
+        return None
+
+    monkeypatch.setattr("yt_subs.core.downloader._download_subtitles_ytdlp", fake_ytdlp)
+    _patch_fetch(monkeypatch, b"<html>denied</html>")
+
+    info = {
+        "id": "abc123",
+        "subtitles": {"en": [{"ext": "vtt", "url": "https://example.com/en.vtt"}]},
+    }
+
+    files = download_subtitles(
+        UrlStr("https://www.youtube.com/watch?v=x"),
+        resolved_langs=_resolved(),
+        video_id=VideoId("abc123"),
+        output_dir=tmp_path,
+        subtitle_format=SubtitleFormat.VTT,
+        sleep_interval_subtitles=0,
+        sleep_interval_requests=0,
+        skip_video=True,
+        info=info,
+    )
+
+    assert fallback_calls and fallback_calls[0]["video_id"] == VideoId("abc123")
+    assert files[0].status == DownloadStatus.OK
