@@ -10,12 +10,14 @@ from yt_subs.shared.models import (
     LangCodeResolved,
     SubtitleFile,
     SubtitleFormat,
+    VideoId,
 )
 
 
 def _base_opts() -> dict:
     return subtitle_download_opts(
         output_dir=Path("."),
+        video_id=VideoId("abc123"),
         subtitle_format=SubtitleFormat.VTT,
         resolved_langs=["en"],
         skip_video=True,
@@ -31,6 +33,7 @@ def test_cookies_are_off_by_default():
 def test_cookies_are_forwarded_when_requested():
     opts = subtitle_download_opts(
         output_dir=Path("."),
+        video_id=VideoId("abc123"),
         subtitle_format=SubtitleFormat.VTT,
         resolved_langs=["en"],
         skip_video=True,

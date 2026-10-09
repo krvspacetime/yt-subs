@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -23,10 +24,25 @@ from yt_subs.shared.models import (
     YtdlpSanitizedInfo,
     BrowserCookies,
 )
+from yt_subs.error import SubtitleDownloadError
 
 log = logging.getLogger(__name__)
 
 _FETCH_USER_AGENT = "Mozilla/5.0 (compatible; yt-subs/0.1)"
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_.\-]")
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
+def safe_filename_component(value: object) -> str:
+    component = _UNSAFE_FILENAME_CHARS.sub("_", str(value)).strip(".-")
+    if not component or component.upper() in _WINDOWS_RESERVED_NAMES:
+        return "unknown"
+    return component
 
 
 def find_subtitle_file(
@@ -40,7 +56,7 @@ def find_subtitle_file(
         return expected
 
     log.warning("expected subtitle not found: %s. searching output dir ...", expected)
-    expected_suffix = f"[{video_id}].{lang}.{subtitle_format}"
+    expected_suffix = f"[{safe_filename_component(video_id)}].{lang}.{subtitle_format}"
     for f in output_dir.iterdir():
         if f.is_file() and f.name.endswith(expected_suffix):
             return f
@@ -54,7 +70,12 @@ def expected_subtitle_path(
     lang: LangCodeResolved,
     subtitle_format: SubtitleFormat,
 ) -> Path:
-    return output_dir / f"{video_id}.{lang}.{subtitle_format}"
+    dest = output_dir / f"{video_id}.{lang}.{subtitle_format}"
+    if dest.resolve().parent != output_dir.resolve():
+        raise SubtitleDownloadError(
+            f"refusing to write subtitle outside of {output_dir}: {video_id!r}"
+        )
+    return dest
 
 
 def find_track_url(
@@ -191,6 +212,7 @@ def _download_subtitles_ytdlp(
     *,
     info: YtdlpSanitizedInfo | None,
     resolved_langs: tuple[ResolvedSubtitle, ...],
+    video_id: VideoId,
     output_dir: Path,
     subtitle_format: SubtitleFormat,
     sleep_interval_subtitles: int,
@@ -201,6 +223,7 @@ def _download_subtitles_ytdlp(
     """Download subtitles via yt-dlp. Reuses pre-extracted info when provided."""
     opts = subtitle_download_opts(
         output_dir=output_dir,
+        video_id=video_id,
         subtitle_format=subtitle_format,
         resolved_langs=[
             item.resolved for item in resolved_langs if item.resolved is not None
@@ -275,6 +298,8 @@ def download_subtitles(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    safe_video_id = VideoId(safe_filename_component(video_id))
+
     log.info(
         "Downloading subtitles: %s",
         ", ".join(
@@ -289,7 +314,7 @@ def download_subtitles(
         direct_results, fallback_items = _download_subtitles_direct(
             info,
             resolved_langs=resolved_langs,
-            video_id=video_id,
+            video_id=safe_video_id,
             output_dir=output_dir,
             subtitle_format=subtitle_format,
             sleep_interval_subtitles=sleep_interval_subtitles,
@@ -304,6 +329,7 @@ def download_subtitles(
                 url,
                 info=info,
                 resolved_langs=fallback_items,
+                video_id=safe_video_id,
                 output_dir=output_dir,
                 subtitle_format=subtitle_format,
                 sleep_interval_subtitles=sleep_interval_subtitles,
@@ -321,7 +347,7 @@ def download_subtitles(
                     continue
 
                 sub_path = find_subtitle_file(
-                    output_dir, video_id, item.resolved, subtitle_format
+                    output_dir, safe_video_id, item.resolved, subtitle_format
                 )
                 if sub_path is None:
                     direct_results[item.resolved] = _missing_subtitle_file(item)
@@ -340,6 +366,7 @@ def download_subtitles(
         url,
         info=info,
         resolved_langs=resolved_langs,
+        video_id=safe_video_id,
         output_dir=output_dir,
         subtitle_format=subtitle_format,
         sleep_interval_subtitles=sleep_interval_subtitles,
@@ -349,7 +376,7 @@ def download_subtitles(
     )
     return _collect_results_after_ytdlp(
         resolved_langs,
-        video_id=video_id,
+        video_id=safe_video_id,
         output_dir=output_dir,
         subtitle_format=subtitle_format,
         error=ytdlp_error,

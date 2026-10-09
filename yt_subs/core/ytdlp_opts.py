@@ -9,7 +9,7 @@ from typing import Any
 from yt_dlp.cookies import SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS
 
 from yt_subs.error import YtSubsValueError
-from yt_subs.shared.models import BrowserCookies, SubtitleFormat
+from yt_subs.shared.models import BrowserCookies, SubtitleFormat, VideoId
 
 YOUTUBE_EXTRACTOR_ARGS: dict[str, dict[str, list[str]]] = {
     "youtube": {
@@ -76,6 +76,7 @@ def base_extract_opts(**overrides: Any) -> dict[str, Any]:
 def subtitle_download_opts(
     *,
     output_dir: Path,
+    video_id: VideoId,
     subtitle_format: SubtitleFormat,
     resolved_langs: list[str],
     skip_video: bool,
@@ -90,7 +91,7 @@ def subtitle_download_opts(
         "writeautomaticsub": True,
         "subtitleslangs": resolved_langs,
         "subtitlesformat": subtitle_format,
-        "outtmpl": str(output_dir / "%(id)s.%(ext)s"),
+        "outtmpl": str(output_dir / f"{video_id}.%(ext)s"),
         "skip_download": skip_video,
         "sleep_interval_subtitles": sleep_interval_subtitles,
         "sleep_interval_requests": sleep_interval_requests,
