@@ -8,7 +8,7 @@ YouTube subtitle tracks.
 To add as dependency using `uv`:
 
 ```bash
-uv add git+https://github.com/YOUR_USERNAME/yt-subs.git
+uv add git+https://github.com/krvspacetime/yt-subs.git
 ```
 
 ## Basic Usage
@@ -17,7 +17,7 @@ uv add git+https://github.com/YOUR_USERNAME/yt-subs.git
 from yt_subs import YtSubs
 client = YtSubs(languages="en")
 result = client.download("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-# If `output_path` is not specified, subtitles are saved to ./yt_subs_downloads
+# If `output_dir` is not specified, subtitles are saved to ./yt_subs_downloads
 # Override default by specifying output_dir to the client or in `download` or `download_many`
 ```
 
@@ -109,17 +109,38 @@ SubtitleSourcePolicy.AUTO_THEN_MANUAL
 
 ## Bulk Downloads
 
-`download_many()` returns `Iterator[SubtitleResult]` so it's recommended for bulk downloads. It is implemented using `ThreadPoolExecutor` so the `max_workers` can be set (defaults to 3).
+`download_many()` returns `Iterator[SubtitleResult]` so it's recommended for bulk downloads. It is implemented using `ThreadPoolExecutor` so the `max_workers` can be set (defaults to 1).
 
-> Note: Setting the max_workers to more than 3 doesn't really give too much benefit since conccurent requests are throttled by YouTube anyway. As per my benchmarks though, it still is faster for bulk downloads and is more memory efficient than simply calling `download` for every URL.
+> Note: Setting the max_workers to more than 3 doesn't really give too much benefit since conccurent requests are throttled by YouTube anyway. As per my benchmarks though, it still is faster for bulk downloads and is more memory efficient than simply calling `download` for every URL. Results are yielded as they finish, so `download_many` does not preserve input order unless `max_workers=1`.
 
 ```python
 client = YtSubs()
 
-results = client.download_many(urls, language="en", max_workers=3):
+results = client.download_many(urls, languages="en", max_workers=3):
 for result in results:
     if not result.processable:
         continue
     for subtitle in result.ok_subs:
         print(subtitle.sub_path)
 ```
+
+## Browser Cookies
+
+Some videos only expose subtitles to signed-in clients. `yt-subs` does **not**
+touch your browser by default; opt in explicitly if you need age-restricted or
+region-locked tracks:
+
+```python
+client = YtSubs(languages="en", cookies="firefox:myprofile")
+# or per call
+result = client.download(url, cookies="chrome")
+```
+
+`cookies` uses yt-dlp's syntax: `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, e.g.
+`"chrome"`, `"firefox"`, `"firefox+gnomekeyring"`, `"chromium::Container 1"`.
+
+> **Security note:** enabling this reads cookies from that browser's cookie
+> store (encrypted with your OS keyring) and sends your logged-in session to
+> the remote site with every request. Only use it when you trust the source,
+> and prefer a `cookies.txt` file you control over a browser profile on shared
+> machines.

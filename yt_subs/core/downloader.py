@@ -59,12 +59,7 @@ def find_subtitle_file(
     if expected.exists():
         return expected
 
-    log.warning("expected subtitle not found: %s. searching output dir ...", expected)
-    expected_suffix = f"[{safe_filename_component(video_id)}].{lang}.{subtitle_format}"
-    for f in output_dir.iterdir():
-        if f.is_file() and f.name.endswith(expected_suffix):
-            return f
-
+    log.warning("expected subtitle not found: %s", expected)
     return None
 
 
