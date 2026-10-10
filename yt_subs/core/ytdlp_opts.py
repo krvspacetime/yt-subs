@@ -97,6 +97,7 @@ def subtitle_download_opts(
         "sleep_interval_requests": sleep_interval_requests,
         "socket_timeout": 30,
         "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
+        "noprogress": True,
     }
 
     if cookies is not None:

@@ -6,13 +6,40 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, NewType, Self, TypedDict
 
-type YtdlpSanitizedInfo = dict
+
+class SubtitleTrack(TypedDict, total=False):
+    ext: str
+    url: str
+    name: str
+    protocol: str
+
+
+class YtdlpVideoInfo(TypedDict, total=False):
+    """
+    A single video as yt-dlp reports it, i.e. the raw dict returned by
+    extract_info(). Nothing is stripped: it also carries formats, chapters
+    and thumbnails with signed URLs, and the user's browser cookies when
+    cookies are enabled, so treat it as sensitive and do not log or
+    serialize it wholesale.
+
+    Every key is optional because yt-dlp fills in ~70 keys and different
+    extractors populate different subsets.
+    """
+
+    _type: str
+    id: str
+    extractor: str
+    title: str
+    subtitles: dict[str, list[SubtitleTrack]]
+    automatic_captions: dict[str, list[SubtitleTrack]]
+
 
 UrlStr = NewType("UrlStr", str)
 VideoId = NewType("VideoId", str)
 LangCode = NewType("LangCode", str)
 
 type BrowserCookies = tuple[str, str | None, str | None, str | None]
+
 
 # Requested language code — what the caller asks for, e.g. "en", "zh"
 LangCodeRequested = NewType("LangCodeRequested", str)

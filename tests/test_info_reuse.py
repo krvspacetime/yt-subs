@@ -61,7 +61,7 @@ def test_inspect_reuses_passed_info(monkeypatch):
     monkeypatch.setattr("yt_subs.client.extract_info", _exploding_extract)
 
     client = YtSubs()
-    availability = client.inspect(URL, info=dict(MOCK_VIDEO_INFO_OK))
+    availability = client.inspect(URL, info=MOCK_VIDEO_INFO_OK)
 
     assert availability.video_id == "abc123"
     assert "en" in availability.manual
@@ -72,7 +72,7 @@ def test_resolve_reuses_passed_info(monkeypatch):
     monkeypatch.setattr("yt_subs.client.extract_info", _exploding_extract)
 
     client = YtSubs(languages="en")
-    resolved = client.resolve(URL, info=dict(MOCK_VIDEO_INFO_OK))
+    resolved = client.resolve(URL, info=MOCK_VIDEO_INFO_OK)
 
     assert resolved[0].requested == "en"
     assert resolved[0].resolved == "en"
@@ -84,7 +84,7 @@ def test_download_reuses_passed_info(monkeypatch, tmp_path):
     monkeypatch.setattr("yt_subs.client.extract_info", _exploding_extract)
 
     client = YtSubs(languages="en", output_dir=tmp_path)
-    result = client.download(URL, info=dict(MOCK_VIDEO_INFO_OK))
+    result = client.download(URL, info=MOCK_VIDEO_INFO_OK)
 
     assert result.video_id == "abc123"
     assert len(result.ok_subs) == 1
@@ -95,7 +95,7 @@ def test_download_passes_the_info_object_through_unchanged(monkeypatch, tmp_path
     calls = _patch_downloader(monkeypatch, tmp_path)
     monkeypatch.setattr("yt_subs.client.extract_info", _exploding_extract)
 
-    info = dict(MOCK_VIDEO_INFO_OK)
+    info = MOCK_VIDEO_INFO_OK
     YtSubs(languages="en", output_dir=tmp_path).download(URL, info=info)
 
     assert calls[0]["info"] is info
@@ -155,7 +155,7 @@ def test_pipeline_shares_one_extraction(monkeypatch, tmp_path):
     monkeypatch.setattr("yt_subs.client.extract_info", _exploding_extract)
 
     client = YtSubs(languages="en", output_dir=tmp_path)
-    info = dict(MOCK_VIDEO_INFO_OK)
+    info = MOCK_VIDEO_INFO_OK
 
     availability = client.inspect(URL, info=info)
     resolved = client.resolve(URL, info=info)

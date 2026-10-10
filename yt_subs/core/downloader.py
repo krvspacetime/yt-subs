@@ -5,7 +5,6 @@ import re
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -23,8 +22,9 @@ from yt_subs.shared.models import (
     SubtitleFormat,
     SubtitleSource,
     VideoId,
-    YtdlpSanitizedInfo,
+    YtdlpVideoInfo,
     BrowserCookies,
+    SubtitleTrack,
 )
 from yt_subs.error import SubtitleDownloadError
 
@@ -78,7 +78,7 @@ def expected_subtitle_path(
 
 
 def find_track_url(
-    info: YtdlpSanitizedInfo,
+    info: YtdlpVideoInfo,
     *,
     resolved: LangCodeResolved,
     source: SubtitleSource,
@@ -86,7 +86,7 @@ def find_track_url(
 ) -> str | None:
     """Return the direct download URL for a resolved subtitle track, if known."""
     pool_key = "subtitles" if source == SubtitleSource.MANUAL else "automatic_captions"
-    tracks: list[dict[str, Any]] = info.get(pool_key, {}).get(resolved, [])
+    tracks: list[SubtitleTrack] = info.get(pool_key, {}).get(resolved, [])
 
     for track in tracks:
         if track.get("ext") != subtitle_format:
@@ -203,7 +203,7 @@ def _relabeled(file: SubtitleFile, item: ResolvedSubtitle) -> SubtitleFile:
 
 
 def _download_subtitles_direct(
-    info: YtdlpSanitizedInfo,
+    info: YtdlpVideoInfo,
     *,
     resolved_langs: tuple[ResolvedSubtitle, ...],
     video_id: VideoId,
@@ -279,7 +279,7 @@ def _download_subtitles_direct(
 def _download_subtitles_ytdlp(
     url: UrlStr,
     *,
-    info: YtdlpSanitizedInfo | None,
+    info: YtdlpVideoInfo | None,
     resolved_langs: tuple[ResolvedSubtitle, ...],
     video_id: VideoId,
     output_dir: Path,
@@ -357,7 +357,7 @@ def download_subtitles(
     sleep_interval_subtitles: int,
     sleep_interval_requests: int,
     skip_video: bool,
-    info: YtdlpSanitizedInfo | None = None,
+    info: YtdlpVideoInfo | None = None,
     cookies: BrowserCookies | None = None,
 ) -> tuple[SubtitleFile, ...]:
     if not resolved_langs:

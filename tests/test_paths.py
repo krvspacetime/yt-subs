@@ -17,6 +17,7 @@ from yt_subs.shared.models import (
     SubtitleSource,
     UrlStr,
     VideoId,
+    YtdlpVideoInfo,
 )
 
 VIDEO_ID = VideoId("abc123")
@@ -98,7 +99,7 @@ def test_download_sanitizes_unsafe_video_id(monkeypatch, tmp_path):
         lambda url, **kw: b"WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhi\n",
     )
 
-    info = {
+    info: YtdlpVideoInfo = {
         "id": "../../evil",
         "title": "t",
         "subtitles": {"en": [{"ext": "vtt", "url": "https://example.com/en.vtt"}]},
@@ -161,7 +162,7 @@ def test_shared_resolved_track_is_reported_for_every_request(monkeypatch, tmp_pa
 
     monkeypatch.setattr(downloader, "_fetch_subtitle_bytes", fake_fetch)
 
-    info = {
+    info: YtdlpVideoInfo = {
         "id": "abc123",
         "subtitles": {
             "en-orig": [{"ext": "vtt", "url": "https://example.com/en-orig.vtt"}]
@@ -324,7 +325,7 @@ def test_direct_download_falls_back_when_response_rejected(monkeypatch, tmp_path
     monkeypatch.setattr("yt_subs.core.downloader._download_subtitles_ytdlp", fake_ytdlp)
     _patch_fetch(monkeypatch, b"<html>denied</html>")
 
-    info = {
+    info: YtdlpVideoInfo = {
         "id": "abc123",
         "subtitles": {"en": [{"ext": "vtt", "url": "https://example.com/en.vtt"}]},
     }

@@ -11,6 +11,7 @@ from yt_subs.shared.models import (
     SubtitleFile,
     SubtitleFormat,
     VideoId,
+    YtdlpVideoInfo,
 )
 
 
@@ -26,8 +27,26 @@ def _base_opts() -> dict:
     )
 
 
+def test_extract_opts_are_silent():
+    from yt_subs.core.ytdlp_opts import base_extract_opts
+
+    opts = base_extract_opts()
+
+    assert opts["quiet"] is True
+    assert opts["no_warnings"] is True
+    assert opts["skip_download"] is True
+
+
 def test_cookies_are_off_by_default():
     assert "cookiesfrombrowser" not in _base_opts()
+
+
+def test_download_opts_are_silent():
+    opts = _base_opts()
+
+    assert opts["quiet"] is True
+    assert opts["no_warnings"] is True
+    assert opts["noprogress"] is True
 
 
 def test_cookies_are_forwarded_when_requested():
@@ -90,7 +109,7 @@ def test_client_cookies_are_opt_in():
         YtSubs(cookies="not-a-browser")
 
 
-def _mock_info() -> dict:
+def _mock_info() -> YtdlpVideoInfo:
     return {
         "id": "abc123",
         "title": "t",

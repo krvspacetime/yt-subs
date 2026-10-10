@@ -30,7 +30,7 @@ from yt_subs.shared.models import (
     VideoId,
     SubtitleFormat,
     BrowserCookies,
-    YtdlpSanitizedInfo,
+    YtdlpVideoInfo,
 )
 
 
@@ -183,7 +183,7 @@ class YtSubs:
             return self.languages
         return parse_languages(languages)
 
-    def _valid_info(self, info: YtdlpSanitizedInfo | None) -> YtdlpSanitizedInfo | None:
+    def _valid_info(self, info: YtdlpVideoInfo | None) -> YtdlpVideoInfo | None:
         if info is None:
             return None
 
@@ -208,14 +208,14 @@ class YtSubs:
         return info
 
     def _extract_or_reuse(
-        self, url: str, info: YtdlpSanitizedInfo | None
-    ) -> YtdlpSanitizedInfo:
+        self, url: str, info: YtdlpVideoInfo | None
+    ) -> YtdlpVideoInfo:
         if info is not None:
             return info
         return extract_info(UrlStr(url))
 
     def inspect(
-        self, url: str, *, info: YtdlpSanitizedInfo | None = None
+        self, url: str, *, info: YtdlpVideoInfo | None = None
     ) -> SubtitleAvailability:
         info = self._extract_or_reuse(url, self._valid_info(info))
         return inspect_subtitle_availability(UrlStr(url), info)
@@ -227,7 +227,7 @@ class YtSubs:
         languages: LanguagesInput | None = None,
         language_match: LanguageMatch | str | None = None,
         source_policy: SubtitleSourcePolicy | str | None = None,
-        info: YtdlpSanitizedInfo | None = None,
+        info: YtdlpVideoInfo | None = None,
     ) -> tuple[ResolvedSubtitle, ...]:
         _langs = self._resolve_languages(languages)
         availability = self.inspect(url, info=info)
@@ -259,7 +259,7 @@ class YtSubs:
         language_match: LanguageMatch | str | None = None,
         source_policy: SubtitleSourcePolicy | str | None = None,
         cookies: str | None = None,
-        info: YtdlpSanitizedInfo | None = None,
+        info: YtdlpVideoInfo | None = None,
     ) -> SubtitleResult:
         _languages = self._resolve_languages(languages)
         _output_dir = (
@@ -300,7 +300,7 @@ class YtSubs:
         _cookies = self.cookies if cookies is None else self._valid_cookies(cookies)
 
         _info = self._extract_or_reuse(url, self._valid_info(info))
-        video_id: VideoId = _info.get("id", "unknown")
+        video_id: VideoId = VideoId(_info.get("id", "unknown"))
         title = str(_info.get("title", ""))
 
         manual, auto = inspect_subtitles(_info)

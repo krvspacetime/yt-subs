@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-MOCK_VIDEO_INFO_OK = {
+from yt_subs.shared.models import YtdlpVideoInfo
+
+MOCK_VIDEO_INFO_OK: YtdlpVideoInfo = {
     "_type": "video",
     "id": "abc123",
     "extractor": "youtube",
@@ -24,7 +26,7 @@ MOCK_VIDEO_INFO_OK = {
     },
 }
 
-MOCK_VIDEO_INFO_NO_SUBS = {
+MOCK_VIDEO_INFO_NO_SUBS: YtdlpVideoInfo = {
     "id": "xyz789",
     "title": "Mock Video No Subs",
     "subtitles": {},

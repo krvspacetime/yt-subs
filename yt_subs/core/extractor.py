@@ -6,7 +6,6 @@ No download happens here — pure inspection.
 """
 
 from __future__ import annotations
-from typing import Any
 from urllib.parse import parse_qs, urlparse
 import logging
 
@@ -20,15 +19,16 @@ from yt_subs.shared.models import (
     LangCodeManual,
     LangCodeRequested,
     VideoId,
-    YtdlpSanitizedInfo,
+    YtdlpVideoInfo,
     LangCode,
+    SubtitleTrack,
 )
 from yt_subs.error import ExtractorError, VideoUnavailableError
 
 log = logging.getLogger(__name__)
 
 
-def is_native_auto_caption_track(track: dict[str, Any]) -> bool:
+def is_native_auto_caption_track(track: SubtitleTrack) -> bool:
     """Return True for real auto-caption tracks, excluding translated variants."""
     url = track.get("url")
     if not isinstance(url, str):
@@ -38,7 +38,7 @@ def is_native_auto_caption_track(track: dict[str, Any]) -> bool:
     return "tlang" not in query
 
 
-def extract_info(url: UrlStr) -> YtdlpSanitizedInfo:
+def extract_info(url: UrlStr) -> YtdlpVideoInfo:
     """Fetch video metadata without downloading anything."""
     try:
         with yt_dlp.YoutubeDL(base_extract_opts()) as ydl:
@@ -66,39 +66,40 @@ def extract_info(url: UrlStr) -> YtdlpSanitizedInfo:
 
 
 def inspect_subtitles(
-    info: YtdlpSanitizedInfo,
+    info: YtdlpVideoInfo,
 ) -> tuple[set[LangCodeManual], set[LangCodeAuto]]:
-    manual: dict[LangCodeManual, list[dict[str, Any]]] = info.get("subtitles", {})
-    auto: dict[LangCodeAuto, list[dict[str, Any]]] = info.get("automatic_captions", {})
+    manual = info.get("subtitles", {})
+    auto = info.get("automatic_captions", {})
 
     native_auto_langs = {
-        lang
+        LangCode(lang)
         for lang, tracks in auto.items()
         if any(
             t.get("ext") == "vtt" and is_native_auto_caption_track(t) for t in tracks
         )
     }
 
-    manual_langs = set(manual.keys())
-    auto_langs = native_auto_langs
+    manual_langs = {LangCode(lang) for lang in manual}
 
-    return manual_langs, auto_langs
+    return manual_langs, native_auto_langs
 
 
 def inspect_subtitle_availability(
     url: UrlStr,
-    info: YtdlpSanitizedInfo,
+    info: YtdlpVideoInfo,
 ) -> SubtitleAvailability:
-    manual: dict[LangCodeManual, list[dict[str, Any]]] = info.get("subtitles", {})
-    auto: dict[LangCodeAuto, list[dict[str, Any]]] = info.get("automatic_captions", {})
+    manual = info.get("subtitles", {})
+    auto = info.get("automatic_captions", {})
     manual_langs, auto_langs = inspect_subtitles(info)
 
     manual_formats = {
-        lang: frozenset(t["ext"] for t in tracks if isinstance(t.get("ext"), str))
+        LangCode(lang): frozenset(
+            t["ext"] for t in tracks if isinstance(t.get("ext"), str)
+        )
         for lang, tracks in manual.items()
     }
     auto_formats = {
-        lang: frozenset(
+        LangCode(lang): frozenset(
             t["ext"]
             for t in tracks
             if isinstance(t.get("ext"), str) and is_native_auto_caption_track(t)
